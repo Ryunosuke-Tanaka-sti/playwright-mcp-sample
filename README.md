@@ -140,8 +140,7 @@ code .
 
 **含まれるファイル:**
 - `compose.yml` - Docker Compose設定
-- `.mcp.json` - MCP設定（HTTP接続）
-- `.mcp.stdio.json` - stdio接続版（オプション）
+- `.mcp.json` - MCP設定
 - `README.md` - 詳細セットアップガイド
 
 ### 🔒 [docker-direct-setup/](./docker-direct-setup/)

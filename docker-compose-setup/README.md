@@ -8,7 +8,7 @@
 - ✅ **環境分離** - Dockerコンテナで完全に独立
 - ✅ **自動再起動** - `restart: unless-stopped`
 - ✅ **管理が簡単** - Docker Composeで一元管理
-- ✅ **2つの接続方式** - HTTP接続とstdio接続の両方に対応
+- ✅ **stdio接続** - docker exec経由でMCPサーバーと通信
 
 ## 前提条件
 
@@ -62,8 +62,7 @@ docker compose ps
 ```bash
 docker compose logs playwright-mcp
 
-# 期待される出力に以下が含まれる:
-# Listening on http://localhost:8931
+# Chromeのインストールと@playwright/mcpのインストールが完了していることを確認
 ```
 
 ### Step 3: `.mcp.json`を配置
@@ -165,9 +164,9 @@ docker exec playwright-mcp-server ps aux | grep chrome
 docker exec playwright-mcp-server rm -rf /ms-playwright/mcp-chrome-*
 ```
 
-## 接続方式の選択
+## stdio接続について
 
-### stdio接続（検証済み・推奨）
+この設定では、`docker exec`を使用してコンテナ内のMCPサーバーと通信します。
 
 **メリット:**
 - ✅ ネットワーク設定不要
@@ -177,26 +176,6 @@ docker exec playwright-mcp-server rm -rf /ms-playwright/mcp-chrome-*
 **デメリット:**
 - ⚠️ npxのパスが環境により異なる可能性
 
-**設定（`.mcp.json`）:**
-```json
-{
-  "mcpServers": {
-    "playwright": {
-      "command": "docker",
-      "args": [
-        "exec",
-        "-i",
-        "playwright-mcp-server",
-        "node",
-        "/root/.npm/_npx/9833c18b2d85bc59/node_modules/.bin/mcp-server-playwright",
-        "--isolated",
-        "--no-sandbox"
-      ]
-    }
-  }
-}
-```
-
 **注意:** npxのパス（`/root/.npm/_npx/...`）は環境により異なる場合があります。
 
 **パスの確認方法:**
@@ -205,34 +184,7 @@ docker exec -it playwright-mcp-server bash
 find /root/.npm/_npx -name "mcp-server-playwright"
 ```
 
-### HTTP接続（代替）
-
-**メリット:**
-- ✅ 設定がシンプル
-- ✅ ログが見やすい
-- ✅ デバッグが簡単
-- ✅ 複数クライアントから接続可能
-
-**デメリット:**
-- ⚠️ **未検証** - test-results.mdには記載があるが実際の動作確認はstdio接続
-
-**設定（`.mcp.http.json`）:**
-```json
-{
-  "mcpServers": {
-    "playwright": {
-      "url": "http://localhost:8931/mcp"
-    }
-  }
-}
-```
-
-**切り替え方法:**
-```bash
-mv .mcp.json .mcp.stdio.json
-mv .mcp.http.json .mcp.json
-# VSCodeをリロード
-```
+パスが異なる場合は、`.mcp.json`の該当箇所を更新してください。
 
 ## パフォーマンス実測値
 
@@ -262,21 +214,19 @@ docker compose logs playwright-mcp
 ```
 
 **よくある原因:**
-1. ポート8931が既に使用されている
-2. Dockerのリソース不足
+1. Dockerのリソース不足
+2. イメージのダウンロード失敗
 
 **解決策:**
 ```bash
-# ポート使用状況を確認
-netstat -an | grep 8931
-# または
-lsof -i :8931
-
 # 既存のコンテナを停止
 docker compose down
 
 # 再起動
 docker compose up -d
+
+# ログを確認
+docker compose logs -f playwright-mcp
 ```
 
 ### 問題2: MCPサーバーに接続できない
@@ -289,37 +239,19 @@ docker compose ps
 # ログでエラーを確認
 docker compose logs playwright-mcp | grep -i error
 
-# ポートが開いているか確認
-curl -v http://localhost:8931
+# npxのパスを確認
+docker exec -it playwright-mcp-server find /root/.npm/_npx -name "mcp-server-playwright"
 ```
 
 **解決策:**
 1. サーバーが起動しているか確認
-2. ポート8931が開いているか確認
+2. npxのパスが`.mcp.json`と一致しているか確認
 3. コンテナを再起動
    ```bash
    docker compose restart
    ```
 
-### 問題3: "Session not found"エラー
-
-**原因:**
-HTTP接続の初期化に問題がある可能性
-
-**解決策:**
-```bash
-# コンテナを再起動
-docker compose restart
-
-# VSCodeをリロード
-
-# それでも解決しない場合はstdio接続を試す
-mv .mcp.json .mcp.http.json
-mv .mcp.stdio.json .mcp.json
-# VSCodeをリロード
-```
-
-### 問題4: リソース不足
+### 問題3: リソース不足
 
 **現象:**
 コンテナが頻繁に停止する、または動作が遅い
@@ -369,8 +301,24 @@ services:
       sh -c "
         npx playwright install firefox &&
         npm install -g @playwright/mcp@latest &&
-        npx @playwright/mcp@latest --port 8931 --headless --isolated --no-sandbox --browser firefox
+        tail -f /dev/null
       "
+```
+
+`.mcp.json`で`--browser firefox`を指定:
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "docker",
+      "args": [
+        "exec", "-i", "playwright-mcp-server",
+        "node", "/root/.npm/_npx/.../mcp-server-playwright",
+        "--isolated", "--no-sandbox", "--browser", "firefox"
+      ]
+    }
+  }
+}
 ```
 
 ### 複数ブラウザを並行実行
@@ -380,14 +328,10 @@ services:
   playwright-mcp-chrome:
     # ... Chrome設定 ...
     container_name: playwright-mcp-chrome
-    ports:
-      - "8931:8931"
 
   playwright-mcp-firefox:
-    # ... Firefox設定 ...
+    # ... Firefox設定...
     container_name: playwright-mcp-firefox
-    ports:
-      - "8932:8932"
 ```
 
 ## メリット・デメリット
@@ -398,13 +342,13 @@ services:
 2. ✅ **環境分離** - Dockerコンテナで独立
 3. ✅ **自動再起動** - `restart: unless-stopped`
 4. ✅ **管理が簡単** - Docker Composeで一元管理
-5. ✅ **2つの接続方式** - HTTP/stdio両対応
+5. ✅ **stdio接続** - docker exec経由で安定した通信
 
 ### デメリット
 
 1. ❌ **初回起動時間** - 約5分（イメージ743MB + Chrome 112MB）
 2. ❌ **リソース常時消費** - メモリ・CPU常駐（約1GB）
-3. ❌ **ポート管理必要** - 8931ポート占有
+3. ❌ **npxパス依存** - パスが環境により異なる可能性
 4. ❌ **パフォーマンスばらつき** - 27秒〜94秒
 5. ❌ **Docker知識必要** - Docker/Docker Composeの理解が必要
 
