@@ -1,0 +1,5 @@
+# Docker volumes
+volumes/
+
+# Playwright MCP
+.playwright-mcp/

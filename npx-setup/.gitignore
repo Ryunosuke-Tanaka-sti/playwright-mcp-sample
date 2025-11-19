@@ -1,0 +1,13 @@
+# Playwright MCP
+.playwright-mcp/
+.playwright-auth/
+*.webm
+trace.zip
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Screenshots
+screenshots/*.png
+!screenshots/.gitkeep

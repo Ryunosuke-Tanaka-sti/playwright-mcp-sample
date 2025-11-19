@@ -1,0 +1,26 @@
+{
+  "name": "Playwright MCP - npx Setup",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Claude Code拡張機能は手動でインストールしてください
+      ]
+    }
+  },
+
+  // Chromiumを自動インストール
+  "postCreateCommand": "npx playwright install chromium",
+
+  // ポート転送（必要に応じて）
+  "forwardPorts": [],
+
+  // 実行ユーザー
+  "remoteUser": "node",
+
+  // 機能追加（オプション）
+  "features": {
+    // 必要に応じてGitなどを追加
+  }
+}
